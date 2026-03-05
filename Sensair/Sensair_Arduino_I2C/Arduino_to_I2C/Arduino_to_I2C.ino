@@ -113,10 +113,10 @@ int readK30_CO2_withRetry() {
     }
 
     if (bytesRead != 4) {
-      while (Wire.available()) Wire.read();  // flush partial data
-      XBee.print("ERROR: Timeout Occurred. Received ");
+      XBee.print("ERROR: Timeout Occurred. Loaded ");
       XBee.print(bytesRead);
       XBee.println(" bytes instead of 4");
+      while (Wire.available()) Wire.read();  // flush partial data
       delay(RETRY_BACKOFF_MS);
       continue;  // retry
     }
@@ -134,7 +134,11 @@ int readK30_CO2_withRetry() {
     // For CO2 readings above ~32767 ppm (unlikely but possible in fault modes) 
     // the result could be spuriously negative. Fixed by casting first
     uint16_t co2 = ((uint16_t)buf[1] << 8) | buf[2];
-    if (co2 == 0 || co2 > 10000) continue;  // 0 ppm is invalid; >10000 is out of K30 range
+    if (co2 == 0 || co2 > 10000) { // 0 ppm is invalid; >10000 is out of K30 range
+      XBee.println("ERROR: Invalid CO2 reading: " + String(co2));
+      delay(RETRY_BACKOFF_MS);
+      continue
+    };  
 
     return co2;
   }
