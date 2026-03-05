@@ -11,6 +11,7 @@
 // TODO
 // - Check "Error Status" at 0x1E (See section 8 of data sheet) periodically
 //   to detect sensor faults (e.g. dirty optics) and report them via XBee.
+// - Non-blocking startup timer to allow K30 warm-up without triggering watchdog timer
 //
 
 #include <Wire.h>
@@ -53,6 +54,9 @@ void setup() {
   Wire.begin();
   Wire.setClock(I2C_CLOCK_SPEED); 
   
+  // Warning: This will trigger the watchdog timer in the production system
+  // but is necessary to prevent the K30 from locking up when the system first powers on.
+  // TODO: figure out how to create a non-blocking startup timer that allows the K30 to warm up without triggering the watchdog.
   XBee.print(F("K30 I2C CO2 sensor - warming up..."));  
   delay(WARMUP_MS);
 
@@ -60,6 +64,10 @@ void setup() {
   // to detect sensor faults before continuing
 
   XBee.println(F("Ready."));
+
+  // Put the I2C bus into a known state
+  XBee.print(F("Initializing I2C bus..."));
+  recoverI2CBus();
   
 }
 
@@ -71,6 +79,7 @@ void loop() {
     
   } else {
     XBee.println(F("CO2 read failed after retries"));
+    XBee.println(F("Recovering I2C bus..."));
     recoverI2CBus();
   }
   // K30 can lock up if read too frequently, so delay before next read
@@ -207,7 +216,6 @@ int readK30_CO2_withRetry() {
 //   Reference: NXP UM10204 I2C-bus specification §3.1.16
 // ══════════════════════════════════════════════════════════════════════════════
 void recoverI2CBus() {
-  XBee.println(F("Recovering I2C bus..."));
 
   // Release the Wire library before bit-banging the pins directly.
   Wire.end();
@@ -246,5 +254,5 @@ void recoverI2CBus() {
   Wire.begin();
   Wire.setClock(I2C_CLOCK_SPEED);
 
-  XBee.println(F("I2C bus recovery complete."));
+  XBee.println(F("I2C bus initialized"));
 }
