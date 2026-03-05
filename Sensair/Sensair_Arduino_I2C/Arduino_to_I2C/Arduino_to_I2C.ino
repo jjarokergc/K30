@@ -53,24 +53,24 @@ void setup() {
   Wire.begin();
   Wire.setClock(I2C_CLOCK_SPEED); 
   
-  XBee.print("K30 I2C CO2 sensor – warming up...");  
+  XBee.print(F("K30 I2C CO2 sensor - warming up..."));  
   delay(WARMUP_MS);
 
   // TODO - Check "Error Status" at 0x1E (See section 8 of data sheet) 
   // to detect sensor faults before continuing
-  
-  XBee.println("Ready.");
+
+  XBee.println(F("Ready."));
   
 }
 
 void loop() {
   int co2 = readK30_CO2_withRetry();
   if (co2 > 0) {
-    XBee.print("CO2 ppm: ");
+    XBee.print(F("CO2 ppm: "));
     XBee.println(co2);
     
   } else {
-    XBee.println("CO2 read failed after retries");
+    XBee.println(F("CO2 read failed after retries"));
     recoverI2CBus();
   }
   // K30 can lock up if read too frequently, so delay before next read
@@ -98,7 +98,7 @@ int readK30_CO2_withRetry() {
     uint8_t err = Wire.endTransmission();
     if (err != 0) {
       // err codes: 1=data too long, 2=NACK on address, 3=NACK on data, 4=other
-      XBee.print("endTransmission error: "); XBee.println(err);
+      XBee.print(F("endTransmission error: ")); XBee.println(err);
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -115,20 +115,23 @@ int readK30_CO2_withRetry() {
     //  Byte 1 - Status (0x21 "Read Complete" or 0x22 "Read Incomplete")
     //  Byte 2-3 - Data (MSB + LSB)
     //  Byte 4 - Checksum
+
+    // Fill wire buffer with response from K30
     uint8_t received = Wire.requestFrom(K30_I2C_ADDR, (uint8_t)4);  // cast '4' to uint8_t to avoid warning about signed/unsigned mismatch
 
     // Confirm we got 4 bytes back; if not, something went wrong at the I2C level.
     if (received != 4) { // alternative: Wire.available() != 4
-      XBee.println("ERROR: Expected 4 bytes, got " + String(received));
+      XBee.println(F("ERROR: Expected 4 bytes, got " + String(received)));
       // Drain any leftover bytes to avoid poisoning the next transaction.
-      XBee.print("Flushing I2C buffer...");
+      XBee.print(F("Flushing I2C buffer..."));
       while (Wire.available()) Wire.read();  // flush partial data
-      XBee.println("done");
+      XBee.println(F("done"));
       delay(RETRY_BACKOFF_MS);
       continue;
     }
 
-    // Timeout-guarded read — prevents infinite loop if sensor stops clocking.
+    // Timeout-guarded read — prevents infinite loop if sensor stops clocking
+    // Load the wire buffer into an array for processing
     uint8_t buf[4];
     unsigned long startMs = millis();
     int bytesRead = 0;
@@ -141,21 +144,23 @@ int readK30_CO2_withRetry() {
       }
     }
 
-    // Expect 4 bytes
+    // Expect buffer to be loaded within timeout
+    // This is a redundant check given the earlier check on Wire.requestFrom(), 
+    // but is used here to guard against and troubleshoot I2C lockups
     if (bytesRead != 4) {
-      XBee.print("ERROR: Timeout Occurred. Loaded ");
+      XBee.print(F("ERROR: Timeout Occurred. Loaded "));
       XBee.print(bytesRead);
-      XBee.println(" bytes instead of 4");
-      XBee.print("Flushing I2C buffer...");
+      XBee.println(F(" bytes instead of 4"));
+      XBee.print(F("Flushing I2C buffer..."));
       while (Wire.available()) Wire.read();  // flush partial data
-      XBee.println("done");
+      XBee.println(F("done"));
       delay(RETRY_BACKOFF_MS);
       continue;  // retry
     }
 
     // Expect status byte 0x21 "Read Complete"
     if (buf[0] != 0x21) {
-      XBee.print("ERROR: Sensor status indicates read incomplete: 0x"); 
+      XBee.print(F("ERROR: Sensor status indicates read incomplete: 0x")); 
       XBee.println(buf[0], HEX);
       delay(RETRY_BACKOFF_MS);
       continue;
@@ -164,7 +169,7 @@ int readK30_CO2_withRetry() {
     // Verify checksum
     uint8_t checksum = buf[0] + buf[1] + buf[2];
     if (checksum != buf[3]) {
-      XBee.println("ERROR: Checksum fail");
+      XBee.println(F("ERROR: Checksum fail"));
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -178,10 +183,10 @@ int readK30_CO2_withRetry() {
 
     // Expect CO2 in a reasonable range for ambient air; if not, something went wrong
     if (co2 == 0 || co2 > 10000) { // 0 ppm is invalid; >10000 is out of K30 range
-      XBee.println("ERROR: Invalid CO2 reading: " + String(co2));
+      XBee.println(F("ERROR: Invalid CO2 reading: " + String(co2)));
       delay(RETRY_BACKOFF_MS);
-      continue
-    };  
+      continue;
+    }
 
     // Successful read with valid checksum and plausible CO2 value
     return co2;
@@ -202,7 +207,7 @@ int readK30_CO2_withRetry() {
 //   Reference: NXP UM10204 I2C-bus specification §3.1.16
 // ══════════════════════════════════════════════════════════════════════════════
 void recoverI2CBus() {
-  XBee.println("Recovering I2C bus...");
+  XBee.println(F("Recovering I2C bus..."));
 
   // Release the Wire library before bit-banging the pins directly.
   Wire.end();
