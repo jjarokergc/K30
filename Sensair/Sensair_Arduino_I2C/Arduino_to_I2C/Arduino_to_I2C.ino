@@ -1,11 +1,15 @@
 // Arduino sketch for reading Sensair K30 CO2 sensor over I2C and sending data via XBee.
 // Includes a retry mechanism and bus recovery to handle common I2C issues with the K30
 // when used with long wires or in electrically noisy environments.
+//
+// Error handling and expected behavior is designed according to Sensair data sheet:
+// https://rmtplusstoragesenseair.blob.core.windows.net/docs/Dev/publicerat/TDE4700.pdf
+//
 // Author: Jon Jaroker
 // License: MIT
 
 // TODO
-// - Read "Error Status" at 0x1E (See section 8 of data sheet) periodically
+// - Check "Error Status" at 0x1E (See section 8 of data sheet) periodically
 //   to detect sensor faults (e.g. dirty optics) and report them via XBee.
 //
 
@@ -136,7 +140,9 @@ int readK30_CO2_withRetry() {
       XBee.print("ERROR: Timeout Occurred. Loaded ");
       XBee.print(bytesRead);
       XBee.println(" bytes instead of 4");
+      XBee.print("Flushing I2C buffer...");
       while (Wire.available()) Wire.read();  // flush partial data
+      XBee.println("done");
       delay(RETRY_BACKOFF_MS);
       continue;  // retry
     }
@@ -163,12 +169,15 @@ int readK30_CO2_withRetry() {
     // For CO2 readings above ~32767 ppm (unlikely but possible in fault modes) 
     // the result could be spuriously negative. Fixed by casting first
     uint16_t co2 = ((uint16_t)buf[1] << 8) | buf[2];
+
+    // Expect CO2 in a reasonable range for ambient air; if not, something went wrong
     if (co2 == 0 || co2 > 10000) { // 0 ppm is invalid; >10000 is out of K30 range
       XBee.println("ERROR: Invalid CO2 reading: " + String(co2));
       delay(RETRY_BACKOFF_MS);
       continue
     };  
 
+    // Successful read with valid checksum and plausible CO2 value
     return co2;
   }
   return -1;
