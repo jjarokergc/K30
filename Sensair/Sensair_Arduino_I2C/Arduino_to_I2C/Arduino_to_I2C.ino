@@ -13,7 +13,8 @@
 #define XBEE_BAUD_RATE 115200  
 
 // K30 configuration
-#define K30_I2C_ADDR 0x68     // K30 default 7-bit address
+// Changed from 0x68 to 0x69 to avoid conflict with the data logger
+#define K30_I2C_ADDR 0x69     // K30 default 7-bit address: 0x68; Any Sensor address: 0x7F
 #define MAX_RETRIES 3         // Retries before resetting I2C bus
 
 // I2C hardware pins (Uno/Nano): A4 = SDA, A5 = SCL
