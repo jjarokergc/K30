@@ -46,14 +46,18 @@
 // Set up XBee on digital pins 2 and 3
 SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
 
+int16_t readK30_CO2_withRetry();
+
 void setup() {
   
   // Initialize XBee Software Serial port. 
   XBee.begin(XBEE_BAUD_RATE); 
   
+  // Initialize I2C
   Wire.begin();
   Wire.setClock(I2C_CLOCK_SPEED); 
   
+  // Initizialize K30 sensor
   // Warning: This will trigger the watchdog timer in the production system
   // but is necessary to prevent the K30 from locking up when the system first powers on.
   // TODO: figure out how to create a non-blocking startup timer that allows the K30 to warm up without triggering the watchdog.
@@ -72,7 +76,7 @@ void setup() {
 }
 
 void loop() {
-  int co2 = readK30_CO2_withRetry();
+  int16_t co2 = readK30_CO2_withRetry();
   if (co2 > 0) {
     XBee.print(F("CO2 ppm: "));
     XBee.println(co2);
@@ -86,8 +90,8 @@ void loop() {
   delay(2500);
 }
 
-// Returns ppm or -1 on failure
-int readK30_CO2_withRetry() {
+// Returns CO2 in ppm as int16_t, or 0 on failure.
+int16_t readK30_CO2_withRetry() {
   for (int retry = 0; retry < MAX_RETRIES; retry++) {
     Wire.beginTransmission(K30_I2C_ADDR);
 
@@ -200,7 +204,7 @@ int readK30_CO2_withRetry() {
     // Successful read with valid checksum and plausible CO2 value
     return co2;
   }
-  return -1;
+  return 0; // indicate failure after retries
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
