@@ -46,7 +46,9 @@
 // Set up XBee on digital pins 2 and 3
 SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
 
+// Forward Declarations
 int16_t readK30_CO2_withRetry();
+void recoverI2CBus();
 
 void setup() {
   
