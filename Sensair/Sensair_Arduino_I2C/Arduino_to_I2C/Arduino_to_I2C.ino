@@ -231,6 +231,7 @@ void recoverI2CBus() {
   pinMode(I2C_SDA_PIN, INPUT_PULLUP);
   delayMicroseconds(5);
 
+  // Send 9 clock pulses to unstick any device holding SDA low
   for (uint8_t i = 0; i < 9; i++) {
     digitalWrite(I2C_SCL_PIN, HIGH);
     delayMicroseconds(5);
