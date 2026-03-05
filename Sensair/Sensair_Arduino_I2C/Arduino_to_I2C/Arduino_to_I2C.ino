@@ -4,6 +4,11 @@
 // Author: Jon Jaroker
 // License: MIT
 
+// TODO
+// - Read "Error Status" at 0x1E (See section 8 of data sheet) periodically
+//   to detect sensor faults (e.g. dirty optics) and report them via XBee.
+//
+
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
@@ -22,8 +27,8 @@
 #define I2C_SCL_PIN  A5
 #define I2C_SDA_PIN  A4
 
-// Lower I2C clock to 50 kHz — more reliable on long wires than the 100 kHz
-// default; lower chance of noise-induced glitches locking up the bus.
+// Lower I2C clock to 50 kHz — more reliable on long wires than the 100 kHz default
+// K30 SCL clock frequency is 100kHz
 #define I2C_CLOCK_SPEED 50000UL 
 #define I2C_TIMEOUT_MS 50UL   // Timeout for I2C reads (prevents infinite loop if sensor stops clocking)
 
@@ -68,12 +73,19 @@ void loop() {
 int readK30_CO2_withRetry() {
   for (int retry = 0; retry < MAX_RETRIES; retry++) {
     Wire.beginTransmission(K30_I2C_ADDR);
-    // K30 command: function 0x22, read 2 bytes starting at address 0x0008.
-    Wire.write(0x22);
-    Wire.write(0x00);
-    Wire.write(0x08);
+
+    //
+    // K30 Request Command
+    //
+    // Read Ram
+    //  Byte 1 - Command 0x22 (ReadRam with 2 data bytes)
+    //  Byte 2-3 - address 0x0008 ("Space CO2")
+    //  Byte 4 - checksum
+    Wire.write(0x22); // 7:4 Command bits: 0x2 = read; 3:0 Num of Data bytes to read: 0x2 = 2 bytes (MSB + LSB)
+    Wire.write(0x00); // Address MSB 
+    Wire.write(0x08); // Address LSB
     // Checksum = sum of all command bytes (0x22 + 0x00 + 0x08 = 0x2A).
-    Wire.write(0x2A);
+    Wire.write(0x2A);  // Checksum
 
     uint8_t err = Wire.endTransmission();
     if (err != 0) {
@@ -88,7 +100,13 @@ int readK30_CO2_withRetry() {
     // intermittent checksum failures.
     delay(CMD_DELAY_MS);  
 
-    // Read 4 bytes: status, MSB, LSB, checksum
+    //
+    // K30 Response
+    //
+    // Expect 4 Bytes (Section 5.3 Read Ram)
+    //  Byte 1 - Status (0x21 "Read Complete" or 0x22 "Read Incomplete")
+    //  Byte 2-3 - Data (MSB + LSB)
+    //  Byte 4 - Checksum
     uint8_t received = Wire.requestFrom(K30_I2C_ADDR, (uint8_t)4);  // cast '4' to uint8_t to avoid warning about signed/unsigned mismatch
 
     // Confirm we got 4 bytes back; if not, something went wrong at the I2C level.
@@ -103,8 +121,8 @@ int readK30_CO2_withRetry() {
     // Timeout-guarded read — prevents infinite loop if sensor stops clocking.
     uint8_t buf[4];
     unsigned long startMs = millis();
-
     int bytesRead = 0;
+
     while (bytesRead < 4 && (millis() - startMs) < I2C_TIMEOUT_MS) {
       if (Wire.available() > 0) {
         buf[bytesRead++] = Wire.read();
@@ -113,6 +131,7 @@ int readK30_CO2_withRetry() {
       }
     }
 
+    // Expect 4 bytes
     if (bytesRead != 4) {
       XBee.print("ERROR: Timeout Occurred. Loaded ");
       XBee.print(bytesRead);
@@ -122,7 +141,15 @@ int readK30_CO2_withRetry() {
       continue;  // retry
     }
 
-    // Assemble the reading into a measurement and verify checksum
+    // Expect status byte 0x21 "Read Complete"
+    if (buf[0] != 0x21) {
+      XBee.print("ERROR: Sensor status indicates read incomplete: 0x"); 
+      XBee.println(buf[0], HEX);
+      delay(RETRY_BACKOFF_MS);
+      continue;
+    }
+
+    // Verify checksum
     uint8_t checksum = buf[0] + buf[1] + buf[2];
     if (checksum != buf[3]) {
       XBee.println("ERROR: Checksum fail");
@@ -130,7 +157,8 @@ int readK30_CO2_withRetry() {
       continue;
     }
 
-    //The expression (buf[1] << 8) promotes to int but shifts into or past the 
+    // Assemble CO2 value from MSB and LSB
+    // The expression (buf[1] << 8) promotes to int but shifts into or past the 
     // sign bit for any value ≥ 128 — undefined behavior in C/C++. 
     // For CO2 readings above ~32767 ppm (unlikely but possible in fault modes) 
     // the result could be spuriously negative. Fixed by casting first
