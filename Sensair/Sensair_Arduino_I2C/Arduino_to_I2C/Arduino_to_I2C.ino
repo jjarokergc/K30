@@ -55,6 +55,10 @@ void setup() {
   
   XBee.print("K30 I2C CO2 sensor – warming up...");  
   delay(WARMUP_MS);
+
+  // TODO - Check "Error Status" at 0x1E (See section 8 of data sheet) 
+  // to detect sensor faults before continuing
+  
   XBee.println("Ready.");
   
 }
@@ -117,7 +121,9 @@ int readK30_CO2_withRetry() {
     if (received != 4) { // alternative: Wire.available() != 4
       XBee.println("ERROR: Expected 4 bytes, got " + String(received));
       // Drain any leftover bytes to avoid poisoning the next transaction.
-      while (Wire.available()) Wire.read();
+      XBee.print("Flushing I2C buffer...");
+      while (Wire.available()) Wire.read();  // flush partial data
+      XBee.println("done");
       delay(RETRY_BACKOFF_MS);
       continue;
     }
