@@ -136,7 +136,8 @@ int16_t readK30_CO2_withRetry() {
 
     // Confirm we got 4 bytes back; if not, something went wrong at the I2C level.
     if (received != 4) { // alternative: Wire.available() != 4
-      XBee.println(F("ERROR: Expected 4 bytes, got " + String(received)));
+      XBee.print(F("ERROR: Expected 4 bytes, got "));
+      XBee.println(received);
       // Drain any leftover bytes to avoid poisoning the next transaction.
       XBee.print(F("Flushing I2C buffer..."));
       while (Wire.available()) Wire.read();  // flush partial data
