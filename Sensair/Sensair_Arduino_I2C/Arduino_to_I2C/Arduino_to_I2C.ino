@@ -199,7 +199,8 @@ int16_t readK30_CO2_withRetry() {
 
     // Expect CO2 in a reasonable range for ambient air; if not, something went wrong
     if (co2 == 0 || co2 > 10000) { // 0 ppm is invalid; >10000 is out of K30 range
-      XBee.println(F("ERROR: Invalid CO2 reading: " + String(co2)));
+      XBee.println(F("ERROR: Invalid CO2 reading: ") );
+      XBee.println(co2);
       delay(RETRY_BACKOFF_MS);
       continue;
     }
