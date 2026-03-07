@@ -1,6 +1,6 @@
-// Arduino sketch for reading Sensair K30 CO2 sensor over I2C and sending data via XBee.
-// Includes a retry mechanism and bus recovery to handle common I2C issues with the K30
-// when used with long wires or in electrically noisy environments.
+// Arduino sketch for reading Sensair K30 CO2 sensor over I2C and sending data via XBee
+// or Serial. Includes a retry mechanism and bus recovery to handle common I2C issues 
+// with the K30 when used with long wires or in electrically noisy environments.
 //
 // Error handling and expected behavior is designed according to Sensair data sheet:
 // https://rmtplusstoragesenseair.blob.core.windows.net/docs/Dev/publicerat/TDE4700.pdf
@@ -11,15 +11,20 @@
 // TODO
 // - Check "Error Status" at 0x1E (See section 8 of data sheet) periodically
 //   to detect sensor faults (e.g. dirty optics) and report them via XBee.
-// - Non-blocking startup timer to allow K30 warm-up without triggering watchdog timer
+// - When used with a data logger, switch to a non-blocking startup timer to 
+//   allow K30 warm-up without triggering watchdog timer
 //
 
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
-// Logging
+// Logging Method
 // Set to 1 to log over XBee, 0 to log over USB Serial
 #define USE_XBEE 1
+
+// K30 configuration
+// Changed from 0x68 to 0x69 to avoid conflict with the data logger
+#define K30_I2C_ADDR 0x69     // K30 default 7-bit address: 0x68; Any Sensor address: 0x7F
 
 #if USE_XBEE
   #define LOG_STREAM XBee
@@ -31,11 +36,6 @@
 // On XBee: Use 115200 to minimize interference with actuator servo
 #define XBEE_BAUD_RATE 115200  
 #define SERIAL_BAUD_RATE 9600
-
-// K30 configuration
-// Changed from 0x68 to 0x69 to avoid conflict with the data logger
-#define K30_I2C_ADDR 0x69     // K30 default 7-bit address: 0x68; Any Sensor address: 0x7F
-#define MAX_RETRIES 3         // Retries before resetting I2C bus
 
 // I2C hardware pins (Uno/Nano): A4 = SDA, A5 = SCL
 // These two pins are also used for the software I2C bus-recovery routine.
@@ -52,6 +52,8 @@
 #define RETRY_BACKOFF_MS 50   // extra wait between retries
 #define WARMUP_MS 10000UL     // K30 power-on warm-up
 
+// Retry configuration
+#define MAX_RETRIES 3         // Retries before resetting I2C bus
 
 // Set up XBee on digital pins 2 and 3
 #if USE_XBEE
