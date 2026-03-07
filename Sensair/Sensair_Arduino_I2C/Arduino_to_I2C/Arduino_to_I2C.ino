@@ -17,8 +17,15 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
-// Logging stream (XBee) for debug output. 
-#define LOG_STREAM XBee // Alternative: "Serial" for USB serial debugging
+// Logging
+// Set to 1 to log over XBee, 0 to log over USB Serial
+#define USE_XBEE 1
+
+#if USE_XBEE
+  #define LOG_STREAM XBee
+#else
+  #define LOG_STREAM Serial
+#endif
 
 // Communication
 // On XBee: Use 115200 to minimize interference with actuator servo
@@ -47,9 +54,9 @@
 
 
 // Set up XBee on digital pins 2 and 3
-if (LOG_STREAM == XBee) {
+#if USE_XBEE
   SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
-}
+#endif
 
 // Forward Declarations
 int16_t readK30_CO2_withRetry();
@@ -57,13 +64,12 @@ void recoverI2CBus();
 
 void setup() {
   
-  // Initialize XBee Software Serial port. 
-  if (LOG_STREAM == XBee) {
-    XBee.begin(XBEE_BAUD_RATE); 
-  } 
-  if (LOG_STREAM == Serial) {
-     Serial.begin(SERIAL_BAUD_RATE);
-    }
+  // Initialize log stream
+#if USE_XBEE
+  XBee.begin(XBEE_BAUD_RATE);
+#else
+  Serial.begin(SERIAL_BAUD_RATE);
+#endif
   
   // Initialize I2C
   Wire.begin();
