@@ -17,10 +17,13 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
-// XBee configuration
-// Use 115200 to minimize interference with actuator servo
-// Default is 9600 but that can cause more noise issues on the I2C
+// Logging stream (XBee) for debug output. 
+#define LOG_STREAM XBee // Alternative: "Serial" for USB serial debugging
+
+// Communication
+// On XBee: Use 115200 to minimize interference with actuator servo
 #define XBEE_BAUD_RATE 115200  
+#define SERIAL_BAUD_RATE 9600
 
 // K30 configuration
 // Changed from 0x68 to 0x69 to avoid conflict with the data logger
@@ -44,7 +47,9 @@
 
 
 // Set up XBee on digital pins 2 and 3
-SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
+if (LOG_STREAM == XBee) {
+  SoftwareSerial XBee(2, 3); // Arduino RX, TX (XBee Dout, Din)
+}
 
 // Forward Declarations
 int16_t readK30_CO2_withRetry();
@@ -53,7 +58,12 @@ void recoverI2CBus();
 void setup() {
   
   // Initialize XBee Software Serial port. 
-  XBee.begin(XBEE_BAUD_RATE); 
+  if (LOG_STREAM == XBee) {
+    XBee.begin(XBEE_BAUD_RATE); 
+  } 
+  if (LOG_STREAM == Serial) {
+     Serial.begin(SERIAL_BAUD_RATE);
+    }
   
   // Initialize I2C
   Wire.begin();
@@ -63,16 +73,16 @@ void setup() {
   // Warning: This will trigger the watchdog timer in the production system
   // but is necessary to prevent the K30 from locking up when the system first powers on.
   // TODO: figure out how to create a non-blocking startup timer that allows the K30 to warm up without triggering the watchdog.
-  XBee.print(F("K30 I2C CO2 sensor - warming up..."));  
+  LOG_STREAM.print(F("K30 I2C CO2 sensor - warming up..."));  
   delay(WARMUP_MS);
 
   // TODO - Check "Error Status" at 0x1E (See section 8 of data sheet) 
   // to detect sensor faults before continuing
 
-  XBee.println(F("Ready."));
+  LOG_STREAM.println(F("Ready."));
 
   // Put the I2C bus into a known state
-  XBee.print(F("Initializing I2C bus..."));
+  LOG_STREAM.print(F("Initializing I2C bus..."));
   recoverI2CBus();
   
 }
@@ -80,12 +90,12 @@ void setup() {
 void loop() {
   int16_t co2 = readK30_CO2_withRetry();
   if (co2 > 0) {
-    XBee.print(F("CO2 ppm: "));
-    XBee.println(co2);
+    LOG_STREAM.print(F("CO2 ppm: "));
+    LOG_STREAM.println(co2);
     
   } else {
-    XBee.println(F("CO2 read failed after retries"));
-    XBee.println(F("Recovering I2C bus..."));
+    LOG_STREAM.println(F("CO2 read failed after retries"));
+    LOG_STREAM.println(F("Recovering I2C bus..."));
     recoverI2CBus();
   }
   // K30 can lock up if read too frequently, so delay before next read
@@ -113,7 +123,8 @@ int16_t readK30_CO2_withRetry() {
     uint8_t err = Wire.endTransmission();
     if (err != 0) {
       // err codes: 1=data too long, 2=NACK on address, 3=NACK on data, 4=other
-      XBee.print(F("endTransmission error: ")); XBee.println(err);
+      LOG_STREAM.print(F("endTransmission error: ")); 
+      LOG_STREAM.println(err);
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -136,12 +147,12 @@ int16_t readK30_CO2_withRetry() {
 
     // Confirm we got 4 bytes back; if not, something went wrong at the I2C level.
     if (received != 4) { // alternative: Wire.available() != 4
-      XBee.print(F("ERROR: Expected 4 bytes, got "));
-      XBee.println(received);
+      LOG_STREAM.print(F("ERROR: Expected 4 bytes, got "));
+      LOG_STREAM.println(received);
       // Drain any leftover bytes to avoid poisoning the next transaction.
-      XBee.print(F("Flushing I2C buffer..."));
+      LOG_STREAM.print(F("Flushing I2C buffer..."));
       while (Wire.available()) Wire.read();  // flush partial data
-      XBee.println(F("done"));
+      LOG_STREAM.println(F("done"));
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -164,20 +175,20 @@ int16_t readK30_CO2_withRetry() {
     // This is a redundant check given the earlier check on Wire.requestFrom(), 
     // but is used here to guard against and troubleshoot I2C lockups
     if (bytesRead != 4) {
-      XBee.print(F("ERROR: Timeout Occurred. Loaded "));
-      XBee.print(bytesRead);
-      XBee.println(F(" bytes instead of 4"));
-      XBee.print(F("Flushing I2C buffer..."));
+      LOG_STREAM.print(F("ERROR: Timeout Occurred. Loaded "));
+      LOG_STREAM.print(bytesRead);
+      LOG_STREAM.println(F(" bytes instead of 4"));
+      LOG_STREAM.print(F("Flushing I2C buffer..."));
       while (Wire.available()) Wire.read();  // flush partial data
-      XBee.println(F("done"));
+      LOG_STREAM.println(F("done"));
       delay(RETRY_BACKOFF_MS);
       continue;  // retry
     }
 
     // Expect status byte 0x21 "Read Complete"
     if (buf[0] != 0x21) {
-      XBee.print(F("ERROR: Sensor status indicates read incomplete: 0x")); 
-      XBee.println(buf[0], HEX);
+      LOG_STREAM.print(F("ERROR: Sensor status indicates read incomplete: 0x")); 
+      LOG_STREAM.println(buf[0], HEX);
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -185,7 +196,7 @@ int16_t readK30_CO2_withRetry() {
     // Verify checksum
     uint8_t checksum = buf[0] + buf[1] + buf[2];
     if (checksum != buf[3]) {
-      XBee.println(F("ERROR: Checksum fail"));
+      LOG_STREAM.println(F("ERROR: Checksum fail"));
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -199,8 +210,8 @@ int16_t readK30_CO2_withRetry() {
 
     // Expect CO2 in a reasonable range for ambient air; if not, something went wrong
     if (co2 == 0 || co2 > 10000) { // 0 ppm is invalid; >10000 is out of K30 range
-      XBee.print(F("ERROR: Invalid CO2 reading: ") );
-      XBee.println(co2);
+      LOG_STREAM.print(F("ERROR: Invalid CO2 reading: ") );
+      LOG_STREAM.println(co2);
       delay(RETRY_BACKOFF_MS);
       continue;
     }
@@ -263,5 +274,5 @@ void recoverI2CBus() {
   Wire.begin();
   Wire.setClock(I2C_CLOCK_SPEED);
 
-  XBee.println(F("I2C bus initialized"));
+  LOG_STREAM.println(F("I2C bus initialized"));
 }
